@@ -1,1 +1,185 @@
 # trial-decision-model
+
+Microsoft Foundry にデプロイした `Microsoft-Decision-1` を試す社内向け Web アプリです。
+FastAPI が API と素の HTML・CSS・JavaScript を同一オリジンで配信し、モデルの利用には `exmgai` を使用します。
+
+## 前提
+
+- Python 3.13 以上、uv、Git
+- Microsoft Foundry のリソース URL と `Microsoft-Decision-1` のデプロイ名
+- モデルの利用権限、および API Key または Entra ID のサーバー用資格情報
+
+exmgai は Git リポジトリのコミットを固定しています。依存関係は `uv.lock` で管理します。
+ライブラリの参考資料は [ref/lib/exmgai/README.md](ref/lib/exmgai/README.md) にあります。
+
+## セットアップ
+
+プロジェクトのルートで実行します。以下は PowerShell の例です。
+
+```powershell
+uv sync --locked
+Copy-Item env.toml.example env.toml
+```
+
+作成した `env.toml` の `endpoint` と `deployment`、認証情報を設定します。
+`endpoint` は Foundry リソースの HTTPS URL です。API のパスを付加する必要はありません。
+モデル設定の `name = "decision"` と `provider = "foundry"` は変更しないでください。
+設定本体は Git 管理外です。実際のキーをサンプルやソースに記載しないでください。
+
+### API Key 認証
+
+```toml
+[auth]
+type = "api_key"
+
+[[models]]
+name = "decision"
+provider = "foundry"
+endpoint = "https://your-resource.services.ai.azure.com"
+deployment = "your-microsoft-decision-1-deployment"
+api_key = "your-api-key"
+read_timeout = 600
+input_token_cost = 0.0
+```
+
+### Entra ID 認証
+
+ローカルでは Azure CLI をインストールして `az login` を実行し、次のように設定します。
+`api_key` は不要です。
+
+```toml
+[auth]
+type = "entra_id"
+credential = "azure_cli"
+
+[[models]]
+name = "decision"
+provider = "foundry"
+endpoint = "https://your-resource.services.ai.azure.com"
+deployment = "your-microsoft-decision-1-deployment"
+read_timeout = 600
+input_token_cost = 0.0
+```
+
+公開サーバーでは `credential = "default"` にすると Azure Identity の `DefaultAzureCredential` を使用します。
+マネージド ID または環境変数など、配備環境に応じた資格情報とモデル呼び出し権限を用意してください。
+認証には `https://cognitiveservices.azure.com/.default` のスコープを使用します。
+これはサーバーから Foundry への認証です。閲覧者ごとのログインや資格情報の委譲ではありません。
+
+### タイムアウトと費用
+
+- `read_timeout` は HTTP 通信のタイムアウト設定で、1〜600秒を指定できます。
+- `input_token_cost` は入力100万トークン当たりの USD 単価です。実際の契約に合わせて設定してください。
+- 単価が未設定または `0.0` の場合、推定費用は表示しません。
+- 推定費用は SDK が返す入力トークン数に基づく参考値で、実際の請求額を保証しません。
+- 通信失敗時の自動再試行は行いません。タイムアウト後の再実行でも追加費用が発生する場合があります。
+- 設定変更は次回の実行から反映されます。資格情報はブラウザーに送信しません。
+
+## 起動
+
+```powershell
+uv run python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --limit-concurrency 64
+```
+
+ブラウザーで http://127.0.0.1:8000 を開きます。停止はターミナルで `Ctrl+C` を押します。
+ポートが使用中の場合は `--port 8001` などに変更してください。
+接続設定がなくても画面・保存機能は使用でき、モデル実行時には設定不備のエラーを表示します。
+
+### 社内公開
+
+```powershell
+uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --limit-concurrency 64
+```
+
+アプリにログイン機能はありません。到達できる人は共通の接続設定でモデルを実行し、費用を発生させられます。
+次の条件を満たす社内環境でのみ公開してください。
+
+- ファイアウォールや既存のリバースプロキシで社内ネットワークにアクセスを限定する。
+- 社内公開時は既存のリバースプロキシ等で HTTPS を終端し、平文通信を外部に公開しない。
+- サーバーの資格情報を最小権限にし、設定ファイルへのアクセスとモデルの利用額を管理する。
+- モデルの同時実行上限は1プロセス当たり4件。超過時は429を返す。複数ワーカーにすると上限も増える。
+- プロキシでは転送先・転送ヘッダーを正しく設定する。HTTPS のプロキシを使う場合は uvicorn の
+	`--forwarded-allow-ips` に信頼するプロキシの IP のみを指定する。
+
+アプリは別オリジンからの POST と JSON 以外の POST を拒否しますが、これは利用者認証の代わりにはなりません。
+公開インターネットへの直接公開は対象外です。入力する業務情報がモデルに送信可能かも確認してください。
+
+## 画面と質問形式
+
+1. 質問・コンテキストと、利用する形式のチェックを設定します。
+2. 各形式の指示文、Choice の選択肢、Score の採点基準を編集します。
+3. 実行すると、有効な形式をまとめて1回の `system_one` 呼び出しに送信します。
+
+| 形式 | 入力 | 結果 |
+| --- | --- | --- |
+| Noul | 指示文は必須 | 肯定確率。SDK の `noul`（0〜1）を百分率で表示 |
+| Choice | キーと説明のリスト、任意の指示文 | 選択されたキー・説明、信頼度、選択肢別の確率 |
+| Score | 順序付き採点基準、任意の指示文 | 0から始まる基準番号の期待スコア、信頼度、各基準の確率 |
+
+Score は固定の100点満点ではありません。例えば3基準なら番号は0・1・2で、期待スコアは小数にもなります。
+無効にした形式の入力は画面内に保持し、モデルには送信しません。少なくとも1形式を有効にしてください。
+実行中は編集・保存・復元を停止し、二重送信を防ぎます。再実行・入力変更・復元では古い結果を消去します。
+取得した回答は各形式の表示欄と JSON で確認できます。
+
+アプリの入力上限は質問20,000文字、各指示文・基準・説明2,000文字、Choice／Score各20行です。
+Choice のキーは英数字・`_`・`-` の1〜64文字で重複不可です。
+これらはアプリ側の保護上限であり、モデル固有の制約を保証するものではありません。
+画像・Box・ストリーミング・会話の継続・形式ごとの複数質問には対応しません。
+
+## 質問の保存・復元
+
+初回アクセス時に保存領域が未作成の場合は、「ディープインパクト」「物語文」の2件を初期登録します。
+一覧から選択して復元すると、サンプルの本文・指示文・選択肢・採点基準・有効状態を読み込めます。
+サンプルの読み込みだけではモデルを実行せず、回答も同梱しません。
+サンプルデータは [app/static/default-questions.json](app/static/default-questions.json) にあります。
+
+既存の保存領域がある場合は、空の一覧でもサンプルを追加・上書きしません。
+サンプルは通常の質問と同様に編集・保存・削除でき、削除後の再読み込みで復活しません。
+保存キー自体を削除して初期化した場合は、次回アクセス時にサンプルを再登録します。
+
+保存名を入力して保存ボタンを押すと、名前付き質問セットを `localStorage` に保存します。
+一覧から選択して復元・削除できます。同名保存の上書きと削除には確認があります。
+未完成の質問も保存できますが、実行時には入力検証を行います。
+
+- 保存対象：質問本文、形式の有効状態、指示文、選択肢、採点基準。
+- 保存しない情報：モデルの回答、トークン数・費用、接続先、資格情報。
+- 上限は50セット、保存名は80文字。サーバー側への保存・共有・同期はしない。
+- 保存領域はオリジン（プロトコル・ホスト・ポート）とブラウザープロファイルごとに別になる。
+- 共用ブラウザーでは保存内容が他の利用者に見える可能性がある。暗号化保管ではないため機密情報の保存に注意する。
+- サイトデータの削除やプライベートブラウズ終了で失われることがある。
+- 保存データの破損・未対応バージョン・保存利用不可は通知し、モデル実行は継続できる。
+
+保存領域を初期化する場合は、ブラウザーの開発者ツールで対象オリジンの
+`decision-workspace.question-sets.v1` を削除してください。保存した全質問が消去されます。
+破損したデータはアプリから自動上書きしません。
+
+## API とエラー
+
+- `POST /api/decision`：入力検証後にモデルを実行。有効形式のみを SDK に変換する。
+- `GET /api/config`：入力上限のみを返す。秘密設定は返さない。
+- `GET /health`：プロセスの稼働確認。Foundry への接続確認は行わない。
+- `/` と `/static/`：画面と静的アセット。API ドキュメントの公開は無効。
+
+入力不備は422、同時実行数超過は429、上流の失敗・不正な回答は502、設定不備・Entra ID の認証失敗は503、
+タイムアウトは504を返します。上流の401・403・429を含むエラー本文は利用者に転送しません。
+キー・接続先・質問全文をエラーに含めず、入力検証エラーも入力値を返しません。
+
+## 開発・テスト
+
+```powershell
+uv sync --locked
+uv run python -m playwright install chromium
+uv run python -m ruff check app tests
+uv run python -m pytest
+```
+
+自動テストは実際の exmgai プロバイダーにモック HTTP を接続し、課金 API を呼びません。
+API Key／Entra ID のヘッダー、SDK 変換、接続の解放、入力検証、エラー、同時実行上限を検証します。
+Playwright はテスト専用のローカルサーバーで、PC・モバイル表示、保存・復元・削除、実行中状態などを検証します。
+スクリーンショットは Git 管理外の `test-results/` に出力します。
+実 Foundry への疎通は、資格情報を設定して画面から別途確認してください。実行には費用が発生します。
+
+主要なコードは `app/main.py`（配信・API）、`app/schemas.py`（入力検証）、
+`app/decision.py`（SDK 接続）、`app/static/`（画面）、`tests/`（検証）にあります。
+アイコンはローカルに同梱した Lucide 0.468.0 を使用しています。
+ライセンスは `app/static/vendor/LICENSE.lucide` にあります。

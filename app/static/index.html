@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#fafcfb">
+  <title>Microsoft-Decision-1</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/vendor/lucide.min.js"></script>
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <header class="page-header">
+    <div class="brand-icon" aria-hidden="true"><i data-lucide="workflow"></i></div>
+    <div class="brand"><p class="eyebrow">MICROSOFT FOUNDRY</p><h1>Microsoft-Decision-1</h1></div>
+    <span class="environment">Decision Workspace</span>
+  </header>
+
+  <main>
+    <section class="library" aria-label="保存した質問">
+      <fieldset id="library-controls" class="library-controls">
+        <div class="saved-control"><label for="saved-set">保存した質問</label><select id="saved-set"><option value="">未選択</option></select></div>
+        <div class="icon-group">
+          <button type="button" id="restore" class="icon-button" title="選択した質問を復元" aria-label="選択した質問を復元" disabled><i data-lucide="folder-open"></i></button>
+          <button type="button" id="delete" class="icon-button danger" title="選択した質問を削除" aria-label="選択した質問を削除" disabled><i data-lucide="trash-2"></i></button>
+        </div>
+        <div class="name-control"><label for="set-name">保存名</label><input id="set-name" maxlength="80" autocomplete="off" placeholder="例：取引申請の審査"></div>
+        <button type="button" id="save" class="icon-button" title="現在の質問を保存" aria-label="現在の質問を保存"><i data-lucide="save"></i></button>
+      </fieldset>
+    </section>
+
+    <div class="workspace-toolbar">
+      <div class="section-heading"><span class="section-number">01</span><h2>質問・コンテキスト</h2></div>
+      <div class="run-actions"><span id="status" role="status" aria-live="polite">準備完了</span><button id="run" class="primary" type="submit" form="decision-form"><i data-lucide="play"></i><span>実行</span></button></div>
+    </div>
+    <p id="notice" role="alert" hidden></p>
+
+    <form id="decision-form">
+      <fieldset id="workspace">
+        <div class="context-input">
+          <label class="sr-only" for="state">質問・コンテキスト</label>
+          <textarea id="state" required maxlength="20000" rows="5">新しい取引申請を審査してください。
+
+申請金額：120万円
+取引先：継続取引が3年あり、支払い遅延はありません。
+申請内容：通常契約の更新。ただし、今回は前払いを希望しています。</textarea>
+          <span id="state-count" class="character-count"></span>
+        </div>
+
+        <div class="section-heading questions-heading"><span class="section-number">02</span><h2>判断形式</h2></div>
+        <div class="question-grid">
+          <section class="question-panel noul-panel" aria-labelledby="noul-title">
+            <div class="panel-heading"><span class="type-icon"><i data-lucide="circle-check"></i></span><h3 id="noul-title">Noul</h3><label class="enable-control"><input id="noul-enabled" type="checkbox" checked aria-controls="noul-fields">有効</label></div>
+            <fieldset id="noul-fields" class="question-fields">
+              <label for="noul-instructions">指示文</label><textarea id="noul-instructions" required maxlength="2000" rows="3">この申請を承認すべきですか？</textarea>
+            </fieldset>
+            <div class="result" id="noul-result" aria-live="polite"><p class="result-label">RESULT</p><p class="empty">未実行</p></div>
+          </section>
+
+          <section class="question-panel choice-panel" aria-labelledby="choice-title">
+            <div class="panel-heading"><span class="type-icon"><i data-lucide="list-filter"></i></span><h3 id="choice-title">Choice</h3><label class="enable-control"><input id="choice-enabled" type="checkbox" checked aria-controls="choice-fields">有効</label></div>
+            <fieldset id="choice-fields" class="question-fields">
+              <label for="choice-instructions">指示文</label><textarea id="choice-instructions" maxlength="2000" rows="3">適切な審査経路を選択してください。</textarea>
+              <div class="row-heading"><span>選択肢</span><button type="button" id="add-choice" class="icon-button small" title="選択肢を追加" aria-label="選択肢を追加"><i data-lucide="plus"></i></button></div>
+              <div id="choice-rows" class="criteria-rows"></div>
+            </fieldset>
+            <div class="result" id="choice-result" aria-live="polite"><p class="result-label">RESULT</p><p class="empty">未実行</p></div>
+          </section>
+
+          <section class="question-panel score-panel" aria-labelledby="score-title">
+            <div class="panel-heading"><span class="type-icon"><i data-lucide="chart-no-axes-column-increasing"></i></span><h3 id="score-title">Score</h3><label class="enable-control"><input id="score-enabled" type="checkbox" checked aria-controls="score-fields">有効</label></div>
+            <fieldset id="score-fields" class="question-fields">
+              <label for="score-instructions">指示文</label><textarea id="score-instructions" maxlength="2000" rows="3">この取引のリスクを評価してください。</textarea>
+              <div class="row-heading"><span>採点基準</span><button type="button" id="add-score" class="icon-button small" title="採点基準を追加" aria-label="採点基準を追加"><i data-lucide="plus"></i></button></div>
+              <div id="score-rows" class="criteria-rows"></div>
+            </fieldset>
+            <div class="result" id="score-result" aria-live="polite"><p class="result-label">RESULT</p><p class="empty">未実行</p></div>
+          </section>
+        </div>
+      </fieldset>
+    </form>
+
+    <footer class="result-footer"><span id="usage">—</span><span>Microsoft-Decision-1</span></footer>
+    <details id="raw-response" hidden><summary>JSON</summary><pre id="raw-json"></pre></details>
+  </main>
+  <template id="choice-row-template"><div class="choice-row criterion-row"><input data-field="key" maxlength="64" required pattern="[A-Za-z0-9_-]{1,64}" placeholder="キー"><input data-field="description" maxlength="2000" required placeholder="説明"><button type="button" class="icon-button small remove-row" title="選択肢を削除"><i data-lucide="minus"></i></button></div></template>
+  <template id="score-row-template"><div class="score-row criterion-row"><span class="level-number"></span><input data-field="criterion" maxlength="2000" required placeholder="採点基準"><button type="button" class="icon-button small remove-row" title="採点基準を削除"><i data-lucide="minus"></i></button></div></template>
+</body>
+</html>

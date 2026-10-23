@@ -1,0 +1,31 @@
+[project]
+name = "trial-decision-model"
+version = "0.1.0"
+description = "Microsoft-Decision-1 playground"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.34,<1",
+    "exmgai @ git+https://github.com/tomotaka-nagano/exmgai.git@fca8ea57a37045f28bae220f61d03eba350a69f8",
+    "typesafe-sdk>=0.7.5,<0.8",
+    "pydantic>=2.12,<3",
+    "httpx2>=2,<3",
+    "azure-identity>=1.21,<2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.28", "ruff>=0.11", "pytest-playwright>=0.7"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
