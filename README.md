@@ -104,6 +104,112 @@ uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --l
 アプリは別オリジンからの POST と JSON 以外の POST を拒否しますが、これは利用者認証の代わりにはなりません。
 公開インターネットへの直接公開は対象外です。入力する業務情報がモデルに送信可能かも確認してください。
 
+## Docker Compose で起動
+
+Docker Desktop の Linux コンテナーと Docker Compose v2.30 以降を使用します。
+ホストで uv や Python を導入する必要はありません。イメージ内に Python 3.13、uv、Azure CLI を導入します。
+[compose.yaml](compose.yaml) は、ホストの Azure CLI 保存領域をコンテナーへマウントする構成です。
+
+### 設定の準備
+
+初回のみ、プロジェクトのルートで実行します。既存の設定ファイルは上書きしないでください。
+
+```powershell
+Copy-Item .env.example .env
+Copy-Item env.toml.example env.toml
+```
+
+`.env` には [.env.example](.env.example) を参考に次の値を設定します。
+`.env` と `env.toml` は Git 管理外で、Docker のビルドコンテキストからも除外しています。
+
+| 設定 | 内容 |
+| --- | --- |
+| `GITHUB_TOKEN` | exmgai リポジトリを取得できる GitHub アクセストークン |
+| `AZURE_CONFIG_DIR` | ホスト側の Azure CLI 保存領域の絶対パス。例：`C:/Users/your-user/.azure` |
+| `APP_BIND_ADDRESS` | 公開先 IP。既定はローカル限定の `127.0.0.1` |
+| `APP_PORT` | ホストの公開ポート。既定は `8000`。使用中なら空きポートへ変更 |
+
+GitHub トークンは対象リポジトリの読み取りに必要な最小権限にしてください。
+Fine-grained PAT の場合は対象リポジトリの Contents 読み取り権限と、必要に応じて組織側の承認を設定します。
+トークンをチャットやソースに記載せず、`.env` を共有・コミットしないでください。
+シェルに同名の環境変数が設定されている場合は、Compose の規則により `.env` より優先されます。
+
+`env.toml` は前述の Entra ID 認証の例を使用し、次の設定にします。
+モデルの `endpoint` と `deployment` も設定してください。API Key は不要です。
+
+```toml
+[auth]
+type = "entra_id"
+credential = "azure_cli"
+```
+
+### Azure CLI 認証情報の共有
+
+ホストで `az login` を済ませ、必要なら `az account set --subscription <subscription-id>` で使用先を選択します。
+独自の Azure CLI 保存領域を使用している場合は、そのディレクトリを `.env` の `AZURE_CONFIG_DIR` に指定します。
+ディレクトリと `env.toml` が存在しない場合、Compose は空のディレクトリを自動作成せず起動を拒否します。
+
+- `env.toml` は `/app/env.toml` へ読み取り専用でマウントします。
+- Azure CLI 保存領域は `/root/.azure` へ読み書き可能でマウントします。
+- コンテナー内の `AZURE_CONFIG_DIR` は `/root/.azure` に固定します。
+- Azure CLI がログやトークンキャッシュを更新するため、保存領域は読み取り専用にしていません。
+- コンテナーはこの認証情報で Azure にアクセスできます。信頼できる環境でのみ使用してください。
+
+**Windows のキャッシュ互換性に注意してください。** Windows 版 Azure CLI の認証情報は DPAPI や
+WAM に依存する場合があり、単に `.azure` を Linux コンテナーへマウントしても再利用できないことがあります。
+この場合、既存の Windows のキャッシュを削除・変換したり、暗号化を無効化したりしないでください。
+
+推奨する代替方法は、WSL に Linux 版 Azure CLI を導入して `az login` し、WSL 側のキャッシュを共有する方法です。
+WSL から Docker Desktop の WSL 統合を利用して Compose を実行し、`.env` の `AZURE_CONFIG_DIR` を
+WSL 上の絶対パス（例：`/home/your-user/.azure`）に設定してください。
+ホストとコンテナーで同じ Linux 形式のキャッシュを使用します。認証の期限切れ時も同じ環境で再ログインします。
+保存領域への書き込みで所有権や権限に影響する場合があるため、共有範囲・ファイル権限も確認してください。
+
+### ビルド・起動・停止
+
+設定後、プロジェクトのルートで実行します。
+
+```powershell
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+docker compose logs -f app
+```
+
+ブラウザーで http://localhost:8000 を開きます。`APP_PORT` を変更した場合は URL のポートも変更します。
+既存の保存した質問を使いたい場合は、以前と同じホスト名・ポートでアクセスしてください。
+社内公開する場合は `APP_BIND_ADDRESS=0.0.0.0` に変更し、前述のネットワーク制限・HTTPS の条件を満たしてください。
+
+```powershell
+docker compose down
+```
+
+停止してもホストの設定・Azure CLI の認証情報・ブラウザーの保存した質問は削除しません。
+モデルの同時実行上限はコンテナー1つにつき4件です。
+
+### 認証とビルドの確認
+
+Azure CLI の認証だけを確認する場合は、次を実行します。トークン自体は表示せず有効期限だけを確認します。
+
+```powershell
+docker compose run --rm app az account show --query name --output tsv
+docker compose run --rm app az account get-access-token --resource https://cognitiveservices.azure.com/ --query expiresOn --output tsv
+```
+
+モデルの実行権限と疎通は、画面から別途確認してください。認証確認・ヘルスチェックだけではモデルの疎通は確認できません。
+
+GitHub トークンは Compose の build secret としてビルド時だけ渡します。
+[Dockerfile](Dockerfile) は一時的な Git 設定で HTTPS URL にトークンを付加して `uv sync --locked --no-dev` を実行します。
+依存定義やロックファイルにトークンを書き込まず、`ARG`・`ENV`・恒久的な Git 設定にも残しません。
+認証情報入りの取得キャッシュを残さないよう、uv のキャッシュも無効にしています。
+実行中のコンテナーへ GitHub トークンを渡すことはありません。
+トークンを変更して再取得を試す場合は `docker compose build --no-cache app` の後に再起動してください。
+
+配備前に Docker Scout などで完成したイメージの脆弱性を確認してください。
+ベースイメージのタグだけの診断では、ビルド中に更新した OS パッケージや追加した Azure CLI まで評価できません。
+新しいベースイメージと OS 更新を取り込む場合は `docker compose build --pull --no-cache app` で再ビルドします。
+高深刻度の指摘が残る場合は、対象 CVE と修正版の有無を確認してから配備してください。
+
 ## 画面と質問形式
 
 1. 質問・コンテキストと、利用する形式のチェックを設定します。
