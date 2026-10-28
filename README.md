@@ -292,12 +292,58 @@ Choice のキーは英数字・`_`・`-` の1〜64文字で重複不可です。
 タイムアウトは504を返します。上流の401・403・429を含むエラー本文は利用者に転送しません。
 キー・接続先・質問全文をエラーに含めず、入力検証エラーも入力値を返しません。
 
+## コマンドラインで実モデルへの接続確認
+
+[debug/debug_decision.py](debug/debug_decision.py) は、プロジェクトルートの `env.toml` を読み込み、
+`exmgai.Client('decision', env=...)` の `decision.system_one()` で Decision-1 に Noul の質問を1回送信します。
+アプリ独自の接続処理は使用せず、exmgai 自体の設定読み込み・認証・接続を確認します。
+モックではなく実際のモデルを呼び出すため、費用が発生します。
+
+Linux PC で Entra ID 認証を確認する場合は、Azure CLI、Python 3.13 以上、uv、Git を用意し、
+プロジェクトルートで次を実行します。ログインとスクリプトの実行は同じ Linux ユーザーで行ってください。
+
+```bash
+uv sync --locked --no-dev
+test -e env.toml || cp env.toml.example env.toml
+az login --tenant '<tenant-id>'
+az account set --subscription '<subscription-id>'
+```
+
+`env.toml` は前述の Entra ID 認証の例を参考に、`type = "entra_id"`、
+`credential = "azure_cli"` と実際の `endpoint`・`deployment` を設定します。API Key は不要です。
+ブラウザーを開けない場合は `az login --tenant '<tenant-id>' --use-device-code` を使用します。
+
+トークン取得のみを確認する場合は、トークン自体を表示せず有効期限を確認します。
+このコマンドだけではモデルの実行権限は確認できません。
+
+```bash
+az account get-access-token \
+  --resource https://cognitiveservices.azure.com/ \
+  --query expiresOn \
+  --output tsv
+```
+
+実際のモデルへの接続確認は次のコマンドです。Web サーバーの起動は不要です。
+PowerShell でも同じコマンドを使用できます。
+
+```bash
+uv run --no-dev python -m debug.debug_decision
+```
+
+成功時は `Connection successful.` とモデル名・回答・使用トークン数などの SDK レスポンスの JSON を表示します。
+失敗時は元の例外のトレースバックを表示し、終了コードは非ゼロになります。自動再試行は行いません。
+スクリプト自体は認証情報を出力しませんが、SDK 等の例外に含まれる情報はマスクしません。
+エラーを共有する際は、トークン・キー・接続先などの機密情報が含まれていないか確認してください。
+
+この確認はホストの資格情報を使用します。ホストでは成功してコンテナー内で失敗する場合は、
+コンテナー側の設定・実行ユーザー・Azure CLI キャッシュのマウントを別途確認してください。
+
 ## 開発・テスト
 
 ```powershell
 uv sync --locked
 uv run python -m playwright install chromium
-uv run python -m ruff check app tests
+uv run python -m ruff check app debug tests
 uv run python -m pytest
 ```
 
@@ -305,7 +351,8 @@ uv run python -m pytest
 API Key／Entra ID のヘッダー、SDK 変換、接続の解放、入力検証、エラー、同時実行上限を検証します。
 Playwright はテスト専用のローカルサーバーで、PC・モバイル表示、保存・復元・削除、実行中状態などを検証します。
 スクリーンショットは Git 管理外の `test-results/` に出力します。
-実 Foundry への疎通は、資格情報を設定して画面から別途確認してください。実行には費用が発生します。
+実 Foundry への疎通は、資格情報を設定して画面または前述の接続確認スクリプトから別途確認してください。
+実行には費用が発生します。
 
 主要なコードは `app/main.py`（配信・API）、`app/schemas.py`（入力検証）、
 `app/decision.py`（SDK 接続）、`app/static/`（画面）、`tests/`（検証）にあります。
