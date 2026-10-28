@@ -5,6 +5,8 @@ FastAPI が API と素の HTML・CSS・JavaScript を同一オリジンで配信
 画面タイトルは「Decision Model お試し環境」です。背景はやわらかいパステルグレーとし、丸みのあるパネルを使い、
 Noul・Choice・Score をミント・ラベンダー・ピーチで色分けしています。
 
+画面の操作方法は、スクリーンショット付きの [使い方ガイド](doc/howtouse.md) を参照してください。
+
 ## 前提
 
 - Python 3.13 以上、uv、Git
