@@ -152,10 +152,30 @@ credential = "azure_cli"
 ディレクトリと `env.toml` が存在しない場合、Compose は空のディレクトリを自動作成せず起動を拒否します。
 
 - `env.toml` は `/app/env.toml` へ読み取り専用でマウントします。
-- Azure CLI 保存領域は `/root/.azure` へ読み書き可能でマウントします。
-- コンテナー内の `AZURE_CONFIG_DIR` は `/root/.azure` に固定します。
+- コンテナーは `user: "1001:1001"` で実行します。ホストで `id` を実行し、
+  Azure CLI 保存領域の所有者と UID/GID が異なる場合は、`compose.yaml` の `user` を合わせてください。
+- Azure CLI 保存領域は `/azure` へ読み書き可能でマウントします。
+- コンテナー内の `AZURE_CONFIG_DIR` は `/azure`、`HOME` は書き込み可能な `/tmp` に設定します。
+  マウント元の `${HOME}` はホスト側で展開され、コンテナー内の `HOME` には影響されません。
+- `env.toml` も実行ユーザーから読み取れる所有者・権限にしてください。
 - Azure CLI がログやトークンキャッシュを更新するため、保存領域は読み取り専用にしていません。
+- `cap_drop: ALL` は維持します。認証ファイルの権限を緩めたり root 所有に変更したりする必要はありません。
 - コンテナーはこの認証情報で Azure にアクセスできます。信頼できる環境でのみ使用してください。
+
+既存環境にこのユーザー・マウント設定の変更を反映する場合は、再ビルドではなくコンテナーを再作成します。
+
+```bash
+docker compose config --quiet
+docker compose up -d --no-build --force-recreate app
+docker compose exec app id
+docker compose exec app az account show --query name --output tsv
+docker compose exec app az account get-access-token \
+  --resource https://cognitiveservices.azure.com/ \
+  --query expiresOn \
+  --output tsv
+```
+
+トークン取得まで成功したら、画面からモデルを実行して疎通を確認してください。
 
 **Windows のキャッシュ互換性に注意してください。** Windows 版 Azure CLI の認証情報は DPAPI や
 WAM に依存する場合があり、単に `.azure` を Linux コンテナーへマウントしても再利用できないことがあります。
