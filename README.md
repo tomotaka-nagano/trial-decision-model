@@ -125,12 +125,13 @@ cp env.toml.example env.toml
 
 | 設定 | 内容 |
 | --- | --- |
-| `GITHUB_TOKEN` | exmgai リポジトリを取得できる GitHub アクセストークン |
 | `APP_BIND_ADDRESS` | 公開先 IP。サンプルは別PCから接続可能な `0.0.0.0`。未指定時はローカル限定の `127.0.0.1` |
 | `APP_PORT` | ホストの公開ポート。既定は `8512`。使用中なら空きポートへ変更 |
 
 GitHub トークンは対象リポジトリの読み取りに必要な最小権限にしてください。
 Fine-grained PAT の場合は対象リポジトリの Contents 読み取り権限と、必要に応じて組織側の承認を設定します。
+トークンは `.env` に保存せず、後述のビルドコマンド実行時だけ環境変数 `GITHUB_TOKEN` として渡します。
+既存の `.env` に `GITHUB_TOKEN` がある場合は、その行を削除してください。
 トークンをチャットやソースに記載せず、`.env` を共有・コミットしないでください。
 シェルに同名の環境変数が設定されている場合は、Compose の規則により `.env` より優先されます。
 
@@ -167,14 +168,21 @@ WSL から Docker Desktop の WSL 統合を利用して Compose を実行する�
 
 ### ビルド・起動・停止
 
-設定後、プロジェクトのルートで実行します。
+設定後、プロジェクトのルートで実行します。以下は Linux の Bash の例です。
+`your-github-access-token` を exmgai リポジトリを取得できるトークンに置き換えてください。
+`--build` は `docker compose up` のオプションです。
 
-```powershell
+```bash
 docker compose config --quiet
-docker compose up -d --build
+GITHUB_TOKEN='your-github-access-token' docker compose up -d --build
 docker compose ps
 docker compose logs -f app
 ```
+
+この指定は当該コマンドのプロセスにだけ適用され、トークンを `.env` に保存したり、親シェルへ設定したりしません。
+ただしコマンド履歴にトークンが残り、同一ユーザーや管理者からプロセスの環境変数を参照される可能性があります。
+この PoC ではそのリスクを許容する運用です。履歴やターミナル出力を共有しないでください。
+ビルド済みイメージを使う通常の起動は `docker compose up -d --no-build` で行い、トークンの指定は不要です。
 
 ブラウザーで http://localhost:8512 を開きます。`APP_PORT` を変更した場合は URL のポートも変更します。
 別PCからは `http://起動したPCのIPアドレス:8512` にアクセスします。
@@ -201,16 +209,27 @@ docker compose run --rm app az account get-access-token --resource https://cogni
 
 モデルの実行権限と疎通は、画面から別途確認してください。認証確認・ヘルスチェックだけではモデルの疎通は確認できません。
 
-GitHub トークンは Compose の build secret としてビルド時だけ渡します。
+GitHub トークンはコマンド実行時の環境変数から Compose の build secret としてビルド時だけ渡します。
 [Dockerfile](Dockerfile) は一時的な Git 設定で HTTPS URL にトークンを付加して `uv sync --locked --no-dev` を実行します。
 依存定義やロックファイルにトークンを書き込まず、`ARG`・`ENV`・恒久的な Git 設定にも残しません。
 認証情報入りの取得キャッシュを残さないよう、uv のキャッシュも無効にしています。
 実行中のコンテナーへ GitHub トークンを渡すことはありません。
-トークンを変更して再取得を試す場合は `docker compose build --no-cache app` の後に再起動してください。
+トークンを変更して再取得を試す場合は、次のようにキャッシュなしで再ビルドしてから再起動してください。
+
+```bash
+GITHUB_TOKEN='your-github-access-token' docker compose build --no-cache app
+docker compose up -d --no-build
+```
 
 配備前に Docker Scout などで完成したイメージの脆弱性を確認してください。
 ベースイメージのタグだけの診断では、ビルド中に更新した OS パッケージや追加した Azure CLI まで評価できません。
-新しいベースイメージと OS 更新を取り込む場合は `docker compose build --pull --no-cache app` で再ビルドします。
+新しいベースイメージと OS 更新を取り込む場合も、トークンを指定して再ビルドし、起動し直します。
+
+```bash
+GITHUB_TOKEN='your-github-access-token' docker compose build --pull --no-cache app
+docker compose up -d --no-build
+```
+
 高深刻度の指摘が残る場合は、対象 CVE と修正版の有無を確認してから配備してください。
 
 ## 画面と質問形式
