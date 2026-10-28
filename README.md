@@ -106,7 +106,8 @@ uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1 --l
 
 ## Docker Compose で起動
 
-Docker Desktop の Linux コンテナーと Docker Compose v2.30 以降を使用します。
+Linux PC の Docker Engine と Docker Compose v2.30 以降を使用します。
+Windows では Docker Desktop の Linux コンテナーを使用できますが、後述の認証キャッシュの互換性に注意してください。
 ホストで uv や Python を導入する必要はありません。イメージ内に Python 3.13、uv、Azure CLI を導入します。
 [compose.yaml](compose.yaml) は、ホストの Azure CLI 保存領域をコンテナーへマウントする構成です。
 
@@ -114,9 +115,9 @@ Docker Desktop の Linux コンテナーと Docker Compose v2.30 以降を使用
 
 初回のみ、プロジェクトのルートで実行します。既存の設定ファイルは上書きしないでください。
 
-```powershell
-Copy-Item .env.example .env
-Copy-Item env.toml.example env.toml
+```bash
+cp .env.example .env
+cp env.toml.example env.toml
 ```
 
 `.env` には [.env.example](.env.example) を参考に次の値を設定します。
@@ -125,9 +126,8 @@ Copy-Item env.toml.example env.toml
 | 設定 | 内容 |
 | --- | --- |
 | `GITHUB_TOKEN` | exmgai リポジトリを取得できる GitHub アクセストークン |
-| `AZURE_CONFIG_DIR` | ホスト側の Azure CLI 保存領域の絶対パス。例：`C:/Users/your-user/.azure` |
-| `APP_BIND_ADDRESS` | 公開先 IP。既定はローカル限定の `127.0.0.1` |
-| `APP_PORT` | ホストの公開ポート。既定は `8000`。使用中なら空きポートへ変更 |
+| `APP_BIND_ADDRESS` | 公開先 IP。サンプルは別PCから接続可能な `0.0.0.0`。未指定時はローカル限定の `127.0.0.1` |
+| `APP_PORT` | ホストの公開ポート。既定は `8512`。使用中なら空きポートへ変更 |
 
 GitHub トークンは対象リポジトリの読み取りに必要な最小権限にしてください。
 Fine-grained PAT の場合は対象リポジトリの Contents 読み取り権限と、必要に応じて組織側の承認を設定します。
@@ -146,7 +146,8 @@ credential = "azure_cli"
 ### Azure CLI 認証情報の共有
 
 ホストで `az login` を済ませ、必要なら `az account set --subscription <subscription-id>` で使用先を選択します。
-独自の Azure CLI 保存領域を使用している場合は、そのディレクトリを `.env` の `AZURE_CONFIG_DIR` に指定します。
+マウント元は [compose.yaml](compose.yaml) で `${HOME}/.azure` に固定しています。
+`HOME` は Compose を実行する Linux ユーザーのホームディレクトリです。`.env` でパスを設定する必要はありません。
 ディレクトリと `env.toml` が存在しない場合、Compose は空のディレクトリを自動作成せず起動を拒否します。
 
 - `env.toml` は `/app/env.toml` へ読み取り専用でマウントします。
@@ -160,8 +161,7 @@ WAM に依存する場合があり、単に `.azure` を Linux コンテナー�
 この場合、既存の Windows のキャッシュを削除・変換したり、暗号化を無効化したりしないでください。
 
 推奨する代替方法は、WSL に Linux 版 Azure CLI を導入して `az login` し、WSL 側のキャッシュを共有する方法です。
-WSL から Docker Desktop の WSL 統合を利用して Compose を実行し、`.env` の `AZURE_CONFIG_DIR` を
-WSL 上の絶対パス（例：`/home/your-user/.azure`）に設定してください。
+WSL から Docker Desktop の WSL 統合を利用して Compose を実行すると、WSL ユーザーの `${HOME}/.azure` がマウントされます。
 ホストとコンテナーで同じ Linux 形式のキャッシュを使用します。認証の期限切れ時も同じ環境で再ログインします。
 保存領域への書き込みで所有権や権限に影響する場合があるため、共有範囲・ファイル権限も確認してください。
 
@@ -176,9 +176,12 @@ docker compose ps
 docker compose logs -f app
 ```
 
-ブラウザーで http://localhost:8000 を開きます。`APP_PORT` を変更した場合は URL のポートも変更します。
+ブラウザーで http://localhost:8512 を開きます。`APP_PORT` を変更した場合は URL のポートも変更します。
+別PCからは `http://起動したPCのIPアドレス:8512` にアクセスします。
 既存の保存した質問を使いたい場合は、以前と同じホスト名・ポートでアクセスしてください。
-社内公開する場合は `APP_BIND_ADDRESS=0.0.0.0` に変更し、前述のネットワーク制限・HTTPS の条件を満たしてください。
+サンプルは全ネットワークインターフェースで接続を受け付けます。ファイアウォールで TCP `8512` の接続元を
+信頼できる社内ネットワークに限定し、前述の HTTPS の条件を満たしてください。
+起動したPCだけで使用する場合は `APP_BIND_ADDRESS=127.0.0.1` に変更してください。
 
 ```powershell
 docker compose down
