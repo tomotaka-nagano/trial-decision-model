@@ -2,6 +2,8 @@
 
 Microsoft Foundry にデプロイした `Microsoft-Decision-1` を試す社内向け Web アプリです。
 FastAPI が API と素の HTML・CSS・JavaScript を同一オリジンで配信し、モデルの利用には `exmgai` を使用します。
+画面タイトルは「Decision Model お試し環境」です。背景はやわらかいパステルグレーとし、丸みのあるパネルを使い、
+Noul・Choice・Score をミント・ラベンダー・ピーチで色分けしています。
 
 ## 前提
 
